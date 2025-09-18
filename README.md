@@ -36,7 +36,7 @@ An AI-powered fashion shopping assistant that uses computer vision, natural lang
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.8 - 3.12 (Note: Python 3.13 may have compatibility issues)
 - 4GB+ free disk space
 - 8GB+ RAM recommended
 - CUDA-capable GPU (optional, for better performance)
@@ -45,22 +45,46 @@ An AI-powered fashion shopping assistant that uses computer vision, natural lang
 
 1. **Clone the repository**
 ```bash
+git clone https://github.com/codeWithUtkarsh/GenAIFashionStore
 cd GenAIFashionStore
 ```
 
-2. **Run the setup script**
+2. **Create and activate virtual environment**
+```bash
+# Create virtual environment
+python3 -m venv .venv
+
+# Activate virtual environment
+source .venv/bin/activate  # On macOS/Linux
+# OR
+.venv\Scripts\activate  # On Windows
+```
+
+3. **Install dependencies**
+
+For stable installation (recommended):
+```bash
+# Use stable requirements to avoid compatibility issues
+pip install -r requirements_stable.txt
+```
+
+For latest versions:
+```bash
+pip install -r requirements.txt
+```
+
+4. **Run the setup script**
 ```bash
 python setup.py
 ```
 
 This will:
-- Create a virtual environment
-- Install all dependencies
+- Verify your Python version
 - Set up configuration files
 - Create necessary directories
-- Optionally download sample data
+- Guide you through API key configuration
 
-3. **Configure API Keys**
+5. **Configure API Keys**
 
 Edit the `.env` file with your API keys:
 ```env
@@ -73,13 +97,29 @@ Get your keys from:
 - OpenAI: https://platform.openai.com/api-keys
 - Kaggle: https://www.kaggle.com/settings/account
 
-4. **Run the application**
-```bash
-# Activate virtual environment
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+### Running the Application
 
-# Run Streamlit app
+#### Safe Start (Recommended for First Run)
+```bash
+# Use the safe runner script to handle common issues
+python run_safe.py --clear-cache
+```
+
+#### Normal Start
+```bash
 streamlit run app.py
+```
+
+#### Custom Options
+```bash
+# Run on different port
+python run_safe.py --port 8502
+
+# Enable debug mode
+python run_safe.py --debug
+
+# Clear all caches before starting
+python run_safe.py --clear-cache
 ```
 
 5. **Open in browser**
@@ -193,7 +233,7 @@ This project uses the **Fashion Product Images (Small)** dataset from Kaggle:
 
 ### Core Technologies
 - **Frontend**: Streamlit
-- **Backend**: Python 3.8+
+- **Backend**: Python 3.8-3.12
 - **Database**: ChromaDB (Vector Database)
 - **AI/ML**: OpenAI CLIP, GPT, Sentence Transformers
 
@@ -213,42 +253,6 @@ This project uses the **Fashion Product Images (Small)** dataset from Kaggle:
 - **Recommended**: 8GB RAM, 4+ CPU cores, CUDA GPU
 - **Storage**: 5-10GB for dataset and models
 
-### Optimization Tips
-1. Use GPU acceleration when available
-2. Enable caching for repeated operations
-3. Start with smaller dataset for development
-4. Use batch processing for embeddings
-5. Implement pagination for large result sets
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-**1. API Key Errors**
-```
-Solution: Ensure API keys are correctly set in .env file
-```
-
-**2. Memory Issues**
-```
-Solution: Reduce MAX_PRODUCTS_TO_LOAD or BATCH_SIZE in config.py
-```
-
-**3. Port Already in Use**
-```
-Solution: Change port with: streamlit run app.py --server.port 8502
-```
-
-**4. Dataset Download Fails**
-```
-Solution: Check Kaggle credentials and internet connection
-```
-
-**5. CUDA/GPU Errors**
-```
-Solution: Set USE_GPU = False in config.py to use CPU
-```
-
 ## 🚀 Advanced Features
 
 ### Adding Custom Models
@@ -266,16 +270,6 @@ def _custom_recommendations(self, ...):
     pass
 ```
 
-### Custom UI Themes
-
-Modify Streamlit theme in `config.py`:
-```python
-STREAMLIT_THEME = {
-    "primaryColor": "#FF6B6B",
-    "backgroundColor": "#FFFFFF",
-    # ... more settings
-}
-```
 
 ## 📈 Future Enhancements
 
@@ -289,47 +283,5 @@ STREAMLIT_THEME = {
 - [ ] Mobile app version
 - [ ] Integration with e-commerce platforms
 
-## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- **Kaggle** for providing the Fashion Product Images dataset
-- **OpenAI** for CLIP and GPT models
-- **Streamlit** for the amazing web framework
-- **Hugging Face** for transformer models
-- **ChromaDB** for vector database functionality
-
-## 📞 Support
-
-For questions or issues:
-- Open an issue on GitHub
-- Check the troubleshooting section
-- Review the documentation
-
-## 📝 Citation
-
-If you use this project in your research or work, please cite:
-```bibtex
-@software{genai_fashion_store,
-  title = {GenAI Fashion Store},
-  author = {Your Name},
-  year = {2024},
-  url = {https://github.com/yourusername/GenAIFashionStore}
-}
-```
-
----
-
-**Made with ❤️ using GenAI technologies**
+**Made with ❤️ for AffinityLabs**
