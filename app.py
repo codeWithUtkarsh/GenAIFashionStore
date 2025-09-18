@@ -14,6 +14,7 @@ import logging
 from typing import Dict, List, Optional
 import base64
 from io import BytesIO
+import hashlib
 
 # Import custom modules
 from config import Config
@@ -116,37 +117,45 @@ class FashionStoreApp:
             st.session_state.view_history = []
             st.session_state.uploaded_image = None
 
-    @st.cache_resource(show_spinner=False)
-    def setup_components(_self):
+    def setup_components(self):
         """Setup and cache application components."""
-        with st.spinner("🚀 Initializing Fashion Store components..."):
-            try:
-                # Initialize vector database
-                _self.vector_db = FashionVectorDB()
+        # Use session state to cache components
+        if 'components_initialized' not in st.session_state:
+            with st.spinner("🚀 Initializing Fashion Store components..."):
+                try:
+                    # Initialize embedder first
+                    st.session_state.embedder = CLIPEmbedder()
 
-                # Initialize embedder
-                _self.embedder = CLIPEmbedder()
+                    # Initialize vector database with embedder
+                    st.session_state.vector_db = FashionVectorDB(embedder=st.session_state.embedder)
 
-                # Initialize recommendation engine
-                _self.recommendation_engine = RecommendationEngine(
-                    _self.vector_db,
-                    _self.embedder
-                )
+                    # Initialize recommendation engine
+                    st.session_state.recommendation_engine = RecommendationEngine(
+                        st.session_state.vector_db,
+                        st.session_state.embedder
+                    )
 
-                # Initialize AI assistant
-                _self.assistant = FashionShoppingAssistant(
-                    _self.vector_db,
-                    _self.embedder,
-                    _self.recommendation_engine
-                )
+                    # Initialize AI assistant
+                    st.session_state.assistant = FashionShoppingAssistant(
+                        st.session_state.vector_db,
+                        st.session_state.embedder,
+                        st.session_state.recommendation_engine
+                    )
 
-                logger.info("All components initialized successfully")
-                return True
+                    st.session_state.components_initialized = True
+                    logger.info("All components initialized successfully")
 
-            except Exception as e:
-                logger.error(f"Error initializing components: {e}")
-                st.error(f"Failed to initialize components: {e}")
-                return False
+                except Exception as e:
+                    logger.error(f"Error initializing components: {e}")
+                    st.error(f"Failed to initialize components: {e}")
+                    return False
+
+        # Set instance attributes from session state
+        self.vector_db = st.session_state.vector_db
+        self.embedder = st.session_state.embedder
+        self.recommendation_engine = st.session_state.recommendation_engine
+        self.assistant = st.session_state.assistant
+        return True
 
     def load_data(self, force_reload: bool = False):
         """Load and index product data."""
@@ -162,14 +171,17 @@ class FashionStoreApp:
                     with st.spinner("🔍 Indexing products for search..."):
                         # Generate embeddings
                         image_paths = [p['image_path'] for p in products if 'image_path' in p]
-                        embeddings = self.embedder.get_batch_embeddings(
-                            image_paths[:Config.MAX_PRODUCTS_TO_LOAD],
-                            batch_size=32,
-                            use_cache=True
-                        )
 
-                        # Add to vector database
-                        self.vector_db.add_products(products, embeddings)
+                        if hasattr(self, 'embedder') and self.embedder:
+                            embeddings = self.embedder.get_batch_embeddings(
+                                image_paths[:Config.MAX_PRODUCTS_TO_LOAD],
+                                batch_size=32,
+                                use_cache=True
+                            )
+
+                            # Add to vector database
+                            if hasattr(self, 'vector_db') and self.vector_db:
+                                self.vector_db.add_products(products, embeddings)
 
                     st.session_state.initialized = True
                     st.success(f"✅ Loaded {len(products)} products successfully!")
@@ -236,19 +248,23 @@ class FashionStoreApp:
 
             if search_type == "Text" and query:
                 # Text-based search
-                results = self.vector_db.search_by_text(query, n_results=20)
+                if hasattr(self, 'vector_db') and self.vector_db:
+                    results = self.vector_db.search_by_text(query, n_results=20)
 
             elif search_type == "Image" and st.session_state.uploaded_image:
                 # Image-based search
-                image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
-                results = self.vector_db.search_similar(image_embedding, n_results=20)
+                if hasattr(self, 'embedder') and self.embedder and hasattr(self, 'vector_db') and self.vector_db:
+                    image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
+                    results = self.vector_db.search_similar(image_embedding, n_results=20)
 
             elif search_type == "Both":
                 # Hybrid search
-                text_results = self.vector_db.search_by_text(query, n_results=10) if query else []
+                text_results = []
+                if query and hasattr(self, 'vector_db') and self.vector_db:
+                    text_results = self.vector_db.search_by_text(query, n_results=10)
 
                 image_results = []
-                if st.session_state.uploaded_image:
+                if st.session_state.uploaded_image and hasattr(self, 'embedder') and self.embedder and hasattr(self, 'vector_db') and self.vector_db:
                     image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
                     image_results = self.vector_db.search_similar(image_embedding, n_results=10)
 
@@ -326,6 +342,9 @@ class FashionStoreApp:
         cols = st.columns(4)
 
         for idx, product in enumerate(products[:20]):  # Limit to 20 products
+            # Generate unique key for this product instance
+            product_str = f"{title}_{idx}_{product.get('id', '')}_{product.get('name', '')}"
+            unique_key = hashlib.md5(product_str.encode()).hexdigest()[:8]
             col_idx = idx % 4
 
             with cols[col_idx]:
@@ -335,7 +354,7 @@ class FashionStoreApp:
                     if 'image_path' in product and Path(product['image_path']).exists():
                         try:
                             img = Image.open(product['image_path'])
-                            st.image(img, use_column_width=True)
+                            st.image(img, width='content')
                         except:
                             st.image("https://via.placeholder.com/200x200?text=No+Image", use_column_width=True)
                     else:
@@ -361,16 +380,16 @@ class FashionStoreApp:
                     col1, col2, col3 = st.columns(3)
 
                     with col1:
-                        if st.button("👁️", key=f"view_{product.get('id', idx)}", help="View Details"):
+                        if st.button("👁️", key=f"view_{unique_key}", help="View Details"):
                             st.session_state.current_product = product
                             self.view_product_details(product)
 
                     with col2:
-                        if st.button("❤️", key=f"fav_{product.get('id', idx)}", help="Add to Favorites"):
+                        if st.button("❤️", key=f"fav_{unique_key}", help="Add to Favorites"):
                             self.add_to_favorites(product)
 
                     with col3:
-                        if st.button("🛒", key=f"cart_{product.get('id', idx)}", help="Add to Cart"):
+                        if st.button("🛒", key=f"cart_{unique_key}", help="Add to Cart"):
                             self.add_to_cart(product)
 
     def display_chat_interface(self):
@@ -404,11 +423,14 @@ class FashionStoreApp:
                 'filters': getattr(st.session_state, 'filters', {})
             }
 
-            response = self.assistant.process_user_query(
-                user_input,
-                user_id=st.session_state.user_id,
-                context=context
-            )
+            if hasattr(self, 'assistant') and self.assistant:
+                response = self.assistant.process_user_query(
+                    user_input,
+                    user_id=st.session_state.user_id,
+                    context=context
+                )
+            else:
+                response = {'response': 'Assistant is not initialized yet. Please wait a moment.'}
 
             # Add assistant response to history
             st.session_state.chat_history.append({
@@ -444,22 +466,28 @@ class FashionStoreApp:
             st.markdown("### 🎯 Recommended for You")
 
             # Get recommendations
-            recommendations = self.recommendation_engine.get_recommendations(
-                product_id=st.session_state.current_product.get('id'),
-                user_id=st.session_state.user_id,
-                method='hybrid',
-                n_recommendations=8
-            )
+            if hasattr(self, 'recommendation_engine') and self.recommendation_engine:
+                recommendations = self.recommendation_engine.get_recommendations(
+                    product_id=st.session_state.current_product.get('id'),
+                    user_id=st.session_state.user_id,
+                    method='hybrid',
+                    n_recommendations=8
+                )
+            else:
+                recommendations = []
 
             if recommendations:
                 self.display_products(recommendations, "Similar Products You Might Like")
 
             # Get complementary items
             st.markdown("### 👔 Complete the Look")
-            complementary = self.recommendation_engine.get_complementary_items(
-                product_id=st.session_state.current_product.get('id'),
-                n_recommendations=4
-            )
+            if hasattr(self, 'recommendation_engine') and self.recommendation_engine:
+                complementary = self.recommendation_engine.get_complementary_items(
+                    product_id=st.session_state.current_product.get('id'),
+                    n_recommendations=4
+                )
+            else:
+                complementary = []
 
             if complementary:
                 self.display_products(complementary, "Goes Well With")
@@ -487,7 +515,7 @@ class FashionStoreApp:
         st.sidebar.markdown("---")
 
         # Database stats
-        stats = self.vector_db.get_statistics()
+        stats = self.vector_db.get_statistics() if hasattr(self, 'vector_db') and self.vector_db else {'total_products': 0}
         st.sidebar.markdown("### 📈 Store Statistics")
         st.sidebar.info(f"Total Products: {stats.get('total_products', 0)}")
 
@@ -495,20 +523,31 @@ class FashionStoreApp:
         """View detailed product information."""
         st.session_state.current_product = product
 
-        # Add to view history
-        if product not in st.session_state.view_history:
+        # Add to view history (check for duplicates by ID)
+        product_id = product.get('id', product.get('product_id', ''))
+        history_ids = [p.get('id', p.get('product_id', '')) for p in st.session_state.view_history]
+
+        if product_id not in history_ids:
             st.session_state.view_history.append(product)
+            # Keep only last 10 items in history
+            if len(st.session_state.view_history) > 10:
+                st.session_state.view_history = st.session_state.view_history[-10:]
 
         # Record interaction
-        self.recommendation_engine.record_interaction(
-            st.session_state.user_id,
-            product.get('id'),
-            'view'
-        )
+        if hasattr(self, 'recommendation_engine') and self.recommendation_engine:
+                self.recommendation_engine.record_interaction(
+                    st.session_state.user_id,
+                    product.get('id'),
+                    'view'
+                )
 
     def add_to_cart(self, product: Dict):
         """Add product to cart."""
-        if product not in st.session_state.cart:
+        # Check for duplicate by ID
+        product_id = product.get('id', product.get('product_id', ''))
+        cart_ids = [p.get('id', p.get('product_id', '')) for p in st.session_state.cart]
+
+        if product_id not in cart_ids:
             st.session_state.cart.append(product)
             st.success(f"Added {product.get('name', 'Product')} to cart!")
         else:
@@ -516,7 +555,11 @@ class FashionStoreApp:
 
     def add_to_favorites(self, product: Dict):
         """Add product to favorites."""
-        if product not in st.session_state.favorites:
+        # Check for duplicate by ID
+        product_id = product.get('id', product.get('product_id', ''))
+        favorite_ids = [p.get('id', p.get('product_id', '')) for p in st.session_state.favorites]
+
+        if product_id not in favorite_ids:
             st.session_state.favorites.append(product)
             st.success(f"Added {product.get('name', 'Product')} to favorites!")
         else:
@@ -526,6 +569,11 @@ class FashionStoreApp:
         """Main application entry point."""
         # Display header
         self.display_header()
+
+        # Setup components first
+        if not self.setup_components():
+            st.error("Failed to initialize application components. Please refresh the page.")
+            st.stop()
 
         # Initialize data
         if not st.session_state.initialized:

@@ -569,10 +569,12 @@ class RecommendationEngine:
 def test_recommendation_engine():
     """Test the recommendation engine."""
     from vector_database import FashionVectorDB
+    from image_embedder import CLIPEmbedder
 
     # Initialize components
-    db = FashionVectorDB()
-    engine = RecommendationEngine(db)
+    embedder = CLIPEmbedder()
+    db = FashionVectorDB(embedder=embedder)
+    engine = RecommendationEngine(db, embedder)
 
     # Test different recommendation methods
     print("Testing recommendation engine...")

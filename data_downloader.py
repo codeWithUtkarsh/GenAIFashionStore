@@ -322,6 +322,36 @@ def main():
         print(f"Successfully loaded {len(products)} products")
         if products:
             print(f"Sample product: {json.dumps(products[0], indent=2)}")
+
+            # Test with proper embedder initialization if needed
+            try:
+                from image_embedder import CLIPEmbedder
+                from vector_database import FashionVectorDB
+
+                print("\nInitializing components for testing...")
+                embedder = CLIPEmbedder()
+                db = FashionVectorDB(embedder=embedder)
+
+                # Generate sample embeddings
+                print("Generating sample embeddings...")
+                sample_paths = [p['image_path'] for p in products[:5] if 'image_path' in p and Path(p['image_path']).exists()]
+                if sample_paths:
+                    embeddings = embedder.get_batch_embeddings(sample_paths, batch_size=5, use_cache=True)
+                    print(f"Generated {len(embeddings)} embeddings")
+
+                    # Test adding to database
+                    sample_products = products[:5]
+                    success = db.add_products(sample_products, embeddings)
+                    if success:
+                        print("Successfully added sample products to database")
+
+                        # Test search
+                        results = db.search_by_text("shirt", n_results=3)
+                        print(f"Search test found {len(results)} results")
+            except ImportError as e:
+                print(f"Skipping component test: {e}")
+            except Exception as e:
+                print(f"Component test error: {e}")
     else:
         print("Failed to setup dataset")
 

@@ -2,7 +2,7 @@
 GenAI Assistant module for natural language interactions and intelligent shopping assistance.
 """
 
-import openai
+from openai import OpenAI
 from typing import List, Dict, Optional, Tuple, Any
 import json
 import logging
@@ -43,11 +43,12 @@ class FashionShoppingAssistant:
 
         # Initialize OpenAI client
         if Config.OPENAI_API_KEY:
-            openai.api_key = Config.OPENAI_API_KEY
             self.gpt_model = Config.GPT_MODEL if hasattr(Config, 'GPT_MODEL') else "gpt-3.5-turbo"
         else:
             logger.warning("OpenAI API key not configured")
             self.gpt_model = None
+
+
 
         # Conversation history
         self.conversation_history = []
@@ -567,14 +568,16 @@ class FashionShoppingAssistant:
             messages.append({"role": "user", "content": user_message})
 
             # Generate response
-            response = openai.ChatCompletion.create(
-                model=self.gpt_model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=300
+            client = OpenAI(
+                api_key=Config.OPENAI_API_KEY,
             )
 
-            assistant_response = response.choices[0].message.content
+            response = client.responses.create(
+                model=self.gpt_model,
+                input=messages
+            )
+
+            assistant_response = response.output_text
 
             # Update conversation history
             self.conversation_history.append({"role": "user", "content": query})
@@ -599,8 +602,8 @@ def test_assistant():
     from recommendation_engine import RecommendationEngine
 
     # Initialize components
-    db = FashionVectorDB()
     embedder = CLIPEmbedder()
+    db = FashionVectorDB(embedder=embedder)
     rec_engine = RecommendationEngine(db, embedder)
 
     # Initialize assistant

@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 import json
 from tqdm import tqdm
+import numpy as np
 
 from config import Config
 
@@ -25,16 +26,18 @@ logger = logging.getLogger(__name__)
 class FashionVectorDB:
     """Vector database for fashion product embeddings and metadata."""
 
-    def __init__(self, persist_directory: str = None, collection_name: str = None):
+    def __init__(self, persist_directory: str = None, collection_name: str = None, embedder=None):
         """
         Initialize the vector database.
 
         Args:
             persist_directory: Directory to persist the database
             collection_name: Name of the collection
+            embedder: Optional embedder for text search
         """
         self.persist_directory = persist_directory or Config.CHROMA_PERSIST_DIR
         self.collection_name = collection_name or Config.CHROMA_COLLECTION_NAME
+        self.embedder = embedder
 
         # Initialize ChromaDB client
         self.client = chromadb.PersistentClient(
@@ -59,10 +62,12 @@ class FashionVectorDB:
             )
             logger.info(f"Loaded existing collection: {self.collection_name}")
         except Exception:
-            # Create new collection
+            # Create new collection without default embedding function
+            # We'll provide embeddings directly
             self.collection = self.client.create_collection(
                 name=self.collection_name,
-                metadata={"hnsw:space": "cosine"}
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=None  # Don't use default embedding
             )
             logger.info(f"Created new collection: {self.collection_name}")
 
@@ -195,8 +200,12 @@ class FashionVectorDB:
                     # Convert distance to similarity score (1 - distance for cosine)
                     similarity_score = 1.0 - distance
 
+                    # Extract the actual product ID (remove "product_" prefix if present)
+                    actual_id = product_id.replace('product_', '') if product_id.startswith('product_') else product_id
+
                     product = {
                         'product_id': product_id,
+                        'id': actual_id,  # Add clean ID for consistency
                         'similarity_score': float(similarity_score),
                         **metadata
                     }
@@ -238,13 +247,42 @@ class FashionVectorDB:
                     else:
                         where_clause[key] = value
 
-            # Perform text search
-            results = self.collection.query(
-                query_texts=[text_query],
-                n_results=n_results,
-                where=where_clause if where_clause else None,
-                include=['metadatas', 'documents', 'distances']
-            )
+            # Generate text embedding using CLIP if embedder is available
+            if self.embedder:
+                # Use CLIP to generate text embedding
+                text_embedding = self.embedder.get_text_embedding(text_query)
+                if isinstance(text_embedding, np.ndarray):
+                    text_embedding = text_embedding.tolist()
+
+                # Use query with embedding instead of text
+                results = self.collection.query(
+                    query_embeddings=[text_embedding],
+                    n_results=n_results,
+                    where=where_clause if where_clause else None,
+                    include=['metadatas', 'documents', 'distances']
+                )
+            else:
+                # Fallback: search in documents if no embedder
+                # This won't work well but prevents errors
+                all_results = self.collection.get(
+                    where=where_clause,
+                    limit=n_results * 10,
+                    include=['metadatas', 'documents']
+                )
+
+                # Simple text matching in documents
+                results = {'ids': [[]], 'metadatas': [[]], 'documents': [[]], 'distances': [[]]}
+                if all_results and all_results['ids']:
+                    query_lower = text_query.lower()
+                    for idx, doc in enumerate(all_results.get('documents', [])):
+                        if doc and query_lower in doc.lower():
+                            results['ids'][0].append(all_results['ids'][idx])
+                            results['metadatas'][0].append(all_results['metadatas'][idx])
+                            results['documents'][0].append(doc)
+                            results['distances'][0].append(0.5)  # Default distance
+
+                            if len(results['ids'][0]) >= n_results:
+                                break
 
             # Process results
             products = []
@@ -253,8 +291,12 @@ class FashionVectorDB:
                     metadata = results['metadatas'][0][idx]
                     distance = results['distances'][0][idx]
 
+                    # Extract the actual product ID (remove "product_" prefix if present)
+                    actual_id = product_id.replace('product_', '') if product_id.startswith('product_') else product_id
+
                     product = {
                         'product_id': product_id,
+                        'id': actual_id,  # Add clean ID for consistency
                         'relevance_score': float(1.0 - distance),
                         **metadata
                     }
@@ -325,8 +367,12 @@ class FashionVectorDB:
             products = []
             if results and results['ids']:
                 for idx, product_id in enumerate(results['ids']):
+                    # Extract the actual product ID (remove "product_" prefix if present)
+                    actual_id = product_id.replace('product_', '') if product_id.startswith('product_') else product_id
+
                     product = {
                         'product_id': product_id,
+                        'id': actual_id,  # Add clean ID for consistency
                         **results['metadatas'][idx]
                     }
                     if results['documents'] and results['documents'][idx]:
@@ -467,8 +513,11 @@ class FashionVectorDB:
 
 def test_vector_db():
     """Test the vector database functionality."""
-    # Initialize database
-    db = FashionVectorDB()
+    from image_embedder import CLIPEmbedder
+
+    # Initialize embedder and database
+    embedder = CLIPEmbedder()
+    db = FashionVectorDB(embedder=embedder)
 
     # Get statistics
     stats = db.get_statistics()
