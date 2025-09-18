@@ -206,12 +206,22 @@ class FashionStoreApp:
         """Display search functionality."""
         st.markdown("### 🔍 Search Products")
 
+        # Search tips
+        with st.expander("💡 Search Tips"):
+            st.markdown("""
+            - **Be specific**: "black shoes" instead of just "shoes"
+            - **Include gender**: "shoes for men" or "women's dress"
+            - **Mention color**: "blue jeans", "red shirt"
+            - **Use filters**: Apply filters in the sidebar for better results
+            - **Avoid similar terms**: "flip flops" not "sandals" for flip flops
+            """)
+
         col1, col2, col3 = st.columns([3, 1, 1])
 
         with col1:
             search_query = st.text_input(
                 "Search for fashion items",
-                placeholder="e.g., 'blue shirt for men', 'summer dress', 'formal shoes'",
+                placeholder="e.g., 'black shoes for men', 'blue dress', 'white t-shirt'",
                 key="search_input"
             )
 
@@ -234,8 +244,47 @@ class FashionStoreApp:
             )
 
             if uploaded_file:
-                st.session_state.uploaded_image = Image.open(uploaded_file)
-                st.image(st.session_state.uploaded_image, caption="Uploaded Image", width=200)
+                try:
+                    # Load and validate image
+                    uploaded_image = Image.open(uploaded_file)
+
+                    # Convert to RGB if necessary
+                    if uploaded_image.mode != 'RGB':
+                        uploaded_image = uploaded_image.convert('RGB')
+
+                    # Resize if too large to prevent memory issues
+                    max_size = (800, 800)
+                    uploaded_image.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+                    st.session_state.uploaded_image = uploaded_image
+
+                    # Display uploaded image with analysis
+                    col1, col2 = st.columns([1, 2])
+                    with col1:
+                        st.image(st.session_state.uploaded_image, caption="Uploaded Image", width=200)
+
+                    with col2:
+                        if hasattr(self, 'embedder') and self.embedder:
+                            # Show quick analysis with error handling
+                            try:
+                                with st.spinner("Analyzing image..."):
+                                    attrs = self.embedder.extract_image_attributes(st.session_state.uploaded_image)
+                                    if attrs:
+                                        st.markdown("**Detected Features:**")
+                                        if 'dominant_colors' in attrs and attrs['dominant_colors']:
+                                            st.markdown(f"🎨 **Colors:** {', '.join(attrs['dominant_colors'])}")
+                                        if 'predicted_category' in attrs and attrs['predicted_category']:
+                                            categories = list(attrs['predicted_category'].items())[:2]
+                                            if categories:
+                                                cat_text = ', '.join([f"{cat} ({conf:.0%})" for cat, conf in categories])
+                                                st.markdown(f"👔 **Predicted Type:** {cat_text}")
+                            except Exception as e:
+                                logger.debug(f"Could not analyze image: {e}")
+                                st.info("Image analysis in progress...")
+                except Exception as e:
+                    st.error(f"Error loading image: {str(e)}")
+                    st.session_state.uploaded_image = None
+                    logger.error(f"Image upload error: {e}")
 
         # Perform search
         if search_button or search_query:
@@ -246,41 +295,142 @@ class FashionStoreApp:
         with st.spinner("Searching products..."):
             results = []
 
+            # Get current filters from session state if available
+            filters = getattr(st.session_state, 'filters', {})
+
             if search_type == "Text" and query:
-                # Text-based search
+                # Text-based search with enhanced filtering
                 if hasattr(self, 'vector_db') and self.vector_db:
-                    results = self.vector_db.search_by_text(query, n_results=20)
+                    results = self.vector_db.search_by_text(query, n_results=20, filters=filters)
 
             elif search_type == "Image" and st.session_state.uploaded_image:
-                # Image-based search
+                # Image-based search with filters and attribute extraction
                 if hasattr(self, 'embedder') and self.embedder and hasattr(self, 'vector_db') and self.vector_db:
-                    image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
-                    results = self.vector_db.search_similar(image_embedding, n_results=20)
+                    try:
+                        with st.spinner("Analyzing image..."):
+                            # Extract image attributes (colors, category) with error handling
+                            image_attributes = {}
+                            try:
+                                image_attributes = self.embedder.extract_image_attributes(st.session_state.uploaded_image)
+                            except Exception as e:
+                                logger.warning(f"Could not extract image attributes: {e}")
+                                image_attributes = {'dominant_colors': [], 'predicted_category': {}}
+
+                            # Show detected attributes
+                            if image_attributes:
+                                detected_info = []
+                                if 'dominant_colors' in image_attributes and image_attributes['dominant_colors']:
+                                    detected_info.append(f"Colors: {', '.join(image_attributes['dominant_colors'])}")
+                                if 'predicted_category' in image_attributes and image_attributes['predicted_category']:
+                                    cats = list(image_attributes['predicted_category'].keys())
+                                    if cats:
+                                        top_category = cats[0]
+                                        detected_info.append(f"Type: {top_category}")
+
+                                if detected_info:
+                                    st.info(f"Detected: {' | '.join(detected_info)}")
+
+                            # Get image embedding with error handling
+                            try:
+                                image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
+                            except Exception as e:
+                                st.error("Error processing image. Please try a different image.")
+                                logger.error(f"Image embedding error: {e}")
+                                results = []
+                            else:
+                                # Search with attributes for better accuracy
+                                results = self.vector_db.search_similar(
+                                    image_embedding,
+                                    n_results=20,
+                                    filters=filters,
+                                    query_attributes=image_attributes
+                                )
+                    except Exception as e:
+                        st.error("Image search failed. Please try again.")
+                        logger.error(f"Image search error: {e}")
+                        results = []
 
             elif search_type == "Both":
-                # Hybrid search
+                # Hybrid search with smart merging
                 text_results = []
                 if query and hasattr(self, 'vector_db') and self.vector_db:
-                    text_results = self.vector_db.search_by_text(query, n_results=10)
+                    text_results = self.vector_db.search_by_text(query, n_results=15, filters=filters)
 
                 image_results = []
                 if st.session_state.uploaded_image and hasattr(self, 'embedder') and self.embedder and hasattr(self, 'vector_db') and self.vector_db:
-                    image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
-                    image_results = self.vector_db.search_similar(image_embedding, n_results=10)
+                    try:
+                        # Extract image attributes with error handling
+                        image_attributes = {}
+                        try:
+                            image_attributes = self.embedder.extract_image_attributes(st.session_state.uploaded_image)
+                        except Exception as e:
+                            logger.warning(f"Attribute extraction failed: {e}")
+                            image_attributes = {'dominant_colors': [], 'predicted_category': {}}
 
-                # Merge results
-                results = text_results + image_results
+                        # Get image embedding with error handling
+                        image_embedding = self.embedder.get_image_embedding(st.session_state.uploaded_image)
+
+                        # Search with attributes
+                        image_results = self.vector_db.search_similar(
+                            image_embedding,
+                            n_results=15,
+                            filters=filters,
+                            query_attributes=image_attributes
+                        )
+                    except Exception as e:
+                        logger.error(f"Image search in hybrid mode failed: {e}")
+                        image_results = []
+
+                # Smart merge - combine and deduplicate results
+                seen_ids = set()
+                results = []
+
+                # Prioritize text results for specific queries
+                for result in text_results:
+                    result_id = result.get('id', result.get('product_id'))
+                    if result_id not in seen_ids:
+                        results.append(result)
+                        seen_ids.add(result_id)
+
+                # Add image results that weren't in text results
+                for result in image_results:
+                    result_id = result.get('id', result.get('product_id'))
+                    if result_id not in seen_ids:
+                        results.append(result)
+                        seen_ids.add(result_id)
+
+                # Limit to top 20 results
+                results = results[:20]
 
             st.session_state.search_results = results
 
             if results:
                 st.success(f"Found {len(results)} products!")
+
+                # Display search insights
+                if search_type == "Text" and results:
+                    # Show top matching categories
+                    categories = {}
+                    for r in results[:10]:
+                        cat = r.get('articleType', 'Unknown')
+                        categories[cat] = categories.get(cat, 0) + 1
+
+                    if categories:
+                        top_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)[:3]
+                        st.info(f"Top categories: {', '.join([f'{cat} ({count})' for cat, count in top_categories])}")
             else:
                 st.warning("No products found. Try different keywords or filters.")
 
     def display_filters(self):
         """Display filter options in sidebar."""
         st.sidebar.markdown("### 🎯 Filters")
+
+        # Show active filters
+        if hasattr(st.session_state, 'filters') and st.session_state.filters:
+            st.sidebar.info(f"Active filters: {len(st.session_state.filters)}")
+            if st.sidebar.button("Clear All Filters", use_container_width=True):
+                st.session_state.filters = {}
+                st.rerun()
 
         # Gender filter
         gender_options = ["All", "Men", "Women", "Boys", "Girls", "Unisex"]
@@ -290,18 +440,15 @@ class FashionStoreApp:
         category_options = ["All", "Apparel", "Footwear", "Accessories", "Personal Care"]
         selected_category = st.sidebar.selectbox("Category", category_options)
 
-        # Color filter
-        color_options = ["All", "Black", "Blue", "White", "Red", "Green", "Yellow", "Pink", "Grey", "Brown"]
-        selected_color = st.sidebar.selectbox("Color", color_options)
+        # Article Type filter (more specific)
+        article_options = ["All", "Shirts", "T-Shirts", "Jeans", "Shoes", "Sandals",
+                          "Flip Flops", "Dresses", "Shorts", "Bags", "Watches", "Belts"]
+        selected_article = st.sidebar.selectbox("Article Type", article_options)
 
-        # Price range (simulated)
-        price_range = st.sidebar.slider(
-            "Price Range ($)",
-            min_value=0,
-            max_value=500,
-            value=(0, 500),
-            step=10
-        )
+        # Color filter
+        color_options = ["All", "Black", "Blue", "White", "Red", "Green", "Yellow",
+                        "Pink", "Grey", "Brown", "Navy", "Beige", "Orange", "Purple"]
+        selected_color = st.sidebar.selectbox("Color", color_options)
 
         # Season filter
         season_options = ["All", "Summer", "Winter", "Spring", "Fall"]
@@ -312,13 +459,15 @@ class FashionStoreApp:
         selected_usage = st.sidebar.selectbox("Usage", usage_options)
 
         # Apply filters button
-        if st.sidebar.button("Apply Filters", use_container_width=True):
+        if st.sidebar.button("Apply Filters", type="primary", use_container_width=True):
             # Build filter dictionary
             filters = {}
             if selected_gender != "All":
                 filters['gender'] = selected_gender
             if selected_category != "All":
                 filters['masterCategory'] = selected_category
+            if selected_article != "All":
+                filters['articleType'] = selected_article
             if selected_color != "All":
                 filters['baseColour'] = selected_color
             if selected_season != "All":
@@ -328,7 +477,12 @@ class FashionStoreApp:
 
             # Apply filters to search
             st.session_state.filters = filters
-            st.rerun()
+
+            # Re-run search if there are existing results
+            if hasattr(st.session_state, 'search_input') and st.session_state.search_input:
+                self.perform_search(st.session_state.search_input, st.session_state.get('search_type', 'Text'))
+            else:
+                st.rerun()
 
     def display_products(self, products: List[Dict], title: str = "Products"):
         """Display product grid."""
@@ -371,10 +525,23 @@ class FashionStoreApp:
 
                     st.caption(f"📦 {product.get('articleType', 'N/A')}")
 
-                    # Similarity score if available
-                    if 'similarity_score' in product:
+                    # Display match scores if available
+                    if 'relevance_score' in product:
+                        st.progress(product['relevance_score'])
+                        st.caption(f"Match: {product['relevance_score']*100:.1f}%")
+                    elif 'similarity_score' in product:
                         st.progress(product['similarity_score'])
                         st.caption(f"Match: {product['similarity_score']*100:.1f}%")
+
+                    # Show why it matched (for text search)
+                    if 'text_match_score' in product and product.get('text_match_score', 0) > 0:
+                        match_details = []
+                        if product.get('text_match_score', 0) > 0.5:
+                            match_details.append("✓ Exact match")
+                        elif product.get('semantic_score', 0) > 0.7:
+                            match_details.append("~ Similar item")
+                        if match_details:
+                            st.caption(" ".join(match_details))
 
                     # Action buttons
                     col1, col2, col3 = st.columns(3)

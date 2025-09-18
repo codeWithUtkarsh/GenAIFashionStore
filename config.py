@@ -90,6 +90,58 @@ class Config:
         "usage": ["Casual", "Formal", "Sports", "Ethnic", "Party"]
     }
 
+    # Article Type Mapping for better search accuracy
+    ARTICLE_TYPE_MAPPING = {
+        'shoes': {
+            'exact_matches': ['Shoes', 'Casual Shoes', 'Formal Shoes', 'Sports Shoes'],
+            'exclude': ['Flip Flops', 'Sandals', 'Heels', 'Flats'],
+            'keywords': ['shoe', 'shoes', 'footwear', 'sneaker', 'loafer', 'oxford']
+        },
+        'sandals': {
+            'exact_matches': ['Sandals', 'Flats', 'Heels'],
+            'exclude': ['Shoes', 'Flip Flops'],
+            'keywords': ['sandal', 'sandals', 'heels', 'flats']
+        },
+        'flip flops': {
+            'exact_matches': ['Flip Flops'],
+            'exclude': ['Shoes', 'Sandals', 'Heels'],
+            'keywords': ['flip flop', 'flipflop', 'flip-flop', 'slippers']
+        },
+        'shirts': {
+            'exact_matches': ['Shirts', 'Casual Shirts', 'Formal Shirts'],
+            'exclude': ['T-Shirts', 'Tops'],
+            'keywords': ['shirt', 'shirts']
+        },
+        't-shirts': {
+            'exact_matches': ['Tshirts', 'T-Shirts', 'Tops'],
+            'exclude': ['Shirts'],
+            'keywords': ['t-shirt', 'tshirt', 't shirt', 'tee', 'tops']
+        },
+        'jeans': {
+            'exact_matches': ['Jeans', 'Denim'],
+            'exclude': ['Shorts', 'Trousers'],
+            'keywords': ['jean', 'jeans', 'denim']
+        },
+        'dresses': {
+            'exact_matches': ['Dresses', 'Gowns', 'Tunics'],
+            'exclude': ['Tops', 'Shirts'],
+            'keywords': ['dress', 'dresses', 'gown', 'tunic']
+        }
+    }
+
+    # Color variations for better matching
+    COLOR_VARIATIONS = {
+        'black': ['black', 'charcoal', 'ebony'],
+        'white': ['white', 'cream', 'ivory', 'off-white'],
+        'blue': ['blue', 'navy', 'navy blue', 'royal blue', 'teal'],
+        'red': ['red', 'maroon', 'burgundy', 'crimson'],
+        'green': ['green', 'olive', 'mint', 'emerald'],
+        'yellow': ['yellow', 'mustard', 'golden'],
+        'pink': ['pink', 'rose', 'fuchsia'],
+        'grey': ['grey', 'gray', 'silver', 'ash'],
+        'brown': ['brown', 'tan', 'beige', 'khaki', 'coffee']
+    }
+
     # Recommendation Engine Settings
     RECOMMENDATION_METHODS = ["visual_similarity", "category_based", "collaborative", "hybrid"]
     DEFAULT_RECOMMENDATION_METHOD = "hybrid"
