@@ -1,0 +1,9 @@
+/.cache/*
+/.idea/*
+
+/chroma_db/chroma.sqlite3
+/chroma_db/5438e163-f2cf-4eb4-8786-9d332d7459f8/data_level0.bin
+/.idea/encodings.xml
+/.idea/GenAIFashionStore.iml
+/chroma_db/5438e163-f2cf-4eb4-8786-9d332d7459f8/length.bin
+/.idea/vcs.xml
